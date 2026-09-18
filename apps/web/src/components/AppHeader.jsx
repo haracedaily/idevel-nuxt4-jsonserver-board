@@ -1,7 +1,30 @@
 import { InputText } from 'primereact/inputtext'
-import { Link } from 'react-router-dom'
+import { useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
-export default function AppHeader() {
+export default function AppHeader(props) {
+  const [params,setParams] = useSearchParams();
+  const [search,setSearch]=useState("");
+  const navigator = useNavigate();
+  const location = useLocation();
+  const searchTimer = useRef(null);
+
+  function handleSearch(e){
+    const value = e.target.value;
+    setSearch(value); // 입력창은 즉시 반영, 조회만 디바운스
+    
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      let page = params.get("page") || 1;
+      let sort = params.get("sort") || "createdAt";
+      let type = params.get("type") || "all";
+      setParams({page,sort,q:encodeURIComponent(value),type});
+      if(location.pathname !="/"){
+        navigator(`/${location.search}`);
+      }
+    }, 300);
+  }
+
   return (
     <header className="site-header">
       <div className="shell header-inner">
@@ -19,7 +42,8 @@ export default function AppHeader() {
               type="search"
               placeholder="질문이나 해결 방법 검색"
               aria-label="게시글 검색"
-              readOnly
+              value={search}
+              onChange={handleSearch}
             />
           </div>
           <Link to={"/write"}>

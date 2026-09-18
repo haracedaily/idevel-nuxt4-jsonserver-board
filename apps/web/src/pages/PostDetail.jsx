@@ -1,30 +1,81 @@
 import { Button } from 'primereact/button'
 import { Dialog } from 'primereact/dialog'
 import { InputTextarea } from 'primereact/inputtextarea'
-import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { fetchComment, fetchPost } from '../js/fetch'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { fetchComment, fetchCreateComment, fetchDeletePost, fetchIncrease, fetchPost } from '../js/fetch'
 export default function PostDetail(props) {
   let {id} = useParams();
   const [post, setPost] = useState("");
-  const [comments , setComment] = useState("");
+  const [comments , setComments] = useState("");
   const [loading, setLoading] = useState(false);
+  const [commentLoading,setCommentLoading] = useState(false);
+  const [comment, setComment] = useState("");
+  const [visible,setVisible] = useState(false);
+  const commentRef = useRef(null);
+  const navigate = useNavigate();
   useEffect(()=>{
-   
     setLoading(false);
    const loadData = async ()=>{
     try{
       const board = await fetchPost(id);
+      await fetchIncrease(id,board.viewCount);
+      board.viewCount=parseInt(board.viewCount)+1;
       setPost(board);
       console.log(board);
       const comments = await fetchComment(id);
-      setComment(comments);
+      setComments(comments);
+      console.log("넘어가는 post.viewCount : ",board.viewCount);
     }finally{
       setLoading(true);
     }
     };
   loadData();  
   },[]);
+function handleComment(e){
+  if(e.target.value.trim().length<=500){
+    setComment(e.target.value);
+  }
+}
+async function commentSubmit(){
+  setCommentLoading(true);
+  if(comment?.trim()?.length<1){
+    alert("공백 댓글을 입력할 수 없습니다.");
+    console.log(commentRef);
+    console.log(commentRef.current);
+    commentRef.current.focus();
+    setCommentLoading(false);
+    return;
+  }
+  if(!id){
+    alert("등록되지 않은 게시글입니다.");
+    setCommentLoading(false);
+    return;
+  }
+  let msg = await fetchCreateComment(id,comment);
+  if(msg=="success"){
+        alert("등록에 성공하였습니다.");
+        setComment("");
+        location.reload();
+      }else{
+        alert(msg);
+      }
+
+  setCommentLoading(false);
+}
+// 게시글 삭제
+const handleRemove = async() =>{
+  console.log("여기서 삭제 보냄 " );
+  let msg = await fetchDeletePost(id,comments);
+  console.log(msg);
+  if(msg=="success"){
+    alert("삭제가 완료되었습니다.");
+    navigate("/");
+  }else{
+    alert("삭제에 실패하였습니다.",msg);
+    navigate(-1);
+  }
+}
   return (
     <>
     <Link to={"/"}>
@@ -43,7 +94,7 @@ export default function PostDetail(props) {
             <span className="author-face" aria-hidden="true">{post.writer?.firstName}</span>
             <div>
               <div className="author-name">{post.writer?.nickName}</div>
-              <div className="author-date">{post.createdAt}</div>
+              <div className="author-date">{post.localDate}</div>
             </div>
           </div>
           <div className="stat-row">
@@ -65,13 +116,34 @@ export default function PostDetail(props) {
         </div>
 
         <div className="post-actions">
-          <Button type="button" label="글 삭제" severity="danger" icon="pi pi-trash" className="is-static" />
+          <Button type="button" label="글 삭제" severity="danger" icon="pi pi-trash" className="is-static" onClick={()=>{setVisible(true)}} />
+          <Link to={`/posts/${id}/edit`}>
           <span className="p-button p-button-secondary is-static">
             <i className="pi pi-pencil" aria-hidden="true" />
             <span>글 수정</span>
           </span>
+          </Link>
         </div>
       </article>
+      )}
+      {!loading && (
+        <div className="article-skeleton" aria-busy="true" aria-label="게시글을 불러오고 있어요">
+  <span className="skeleton-line skeleton-line--heading"></span>
+  <span className="skeleton-line skeleton-line--heading-short"></span>
+  <span className="skeleton-line skeleton-line--meta"></span>
+  <div className="skeleton-body">
+    <span className="skeleton-line"></span>
+    <span className="skeleton-line"></span>
+    <span className="skeleton-line skeleton-line--body-short"></span>
+  </div>
+</div>
+)}
+      {loading && !post && (
+        <div className="content-state content-state--danger" role="alert">
+  <span className="content-state-icon" aria-hidden="true"><i className="pi pi-exclamation-triangle"></i></span>
+  <h2>글을 불러오지 못했어요</h2>
+  <p>다시 시도해주세요.</p>
+</div>
       )}
 
       <section className="card comments-card">
@@ -85,17 +157,24 @@ export default function PostDetail(props) {
           <ul className="comment-list">
         
         {loading && comments && comments.map(el=>{
-          return <li className="comment">
+          return <li key={`comment_${el.id}`} className="comment">
             <span className="comment-face" aria-hidden="true">{el.writer.firstName}</span>
             <div>
               <div className="author-name">
                 {el.writer.nickName}
-                <span className="author-date comment-when">{el.createdAt}</span>
+                <span className="author-date comment-when">{el.localDate}</span>
               </div>
               <p className="comment-text">{el.content}</p>
             </div>
           </li>
         })}
+        {loading && comments.length<1 && (
+          <div className="content-state content-state--compact" role="status">
+  <span className="content-state-icon" aria-hidden="true"><i className="pi pi-comment"></i></span>
+  <h2>아직 댓글이 없어요</h2>
+  <p>가장 먼저 댓글을 남겨보세요.</p>
+</div>
+        )}
          
         </ul>
 
@@ -104,23 +183,28 @@ export default function PostDetail(props) {
           <InputTextarea
             id="comment"
             rows={3}
+            value={comment}
+            onChange={handleComment}
+            ref={commentRef}
             placeholder="해결 방법이나 참고 자료를 알려주세요"
             />
           <div className="row-end">
-            <Button type="button" label="댓글 등록" disabled />
+            <Button type="button" label="댓글 등록"  onClick={commentSubmit} disabled={commentLoading?"disabled":""} />
           </div>
         </form>
       </section>
 
       {/* 퍼블리싱된 삭제 확인 UI. visible 상태와 이벤트는 인턴이 구현한다. */}
       <Dialog
-      visible={false}
+      visible={visible}
         header="이 글을 삭제할까요?"
         draggable={false}
+        onHide={()=>setVisible(false)}
+        
         footer={(
           <>
-            <Button type="button" label="취소" severity="help" />
-            <Button type="button" label="삭제" severity="danger" />
+            <Button type="button" label="취소" severity="help" onClick={()=>setVisible(false)} />
+            <Button type="button" label="삭제" severity="danger" onClick={handleRemove} />
           </>
         )}
         >
